@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Spin Wheel</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+      }
+      .wrap {
+        width: min(95vw, 500px);
+        background: #fff;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        text-align: center;
+      }
+      .board {
+        position: relative;
+      }
+      #wheel {
+        width: 100%;
+        border-radius: 50%;
+      }
+      .pointer {
+        position: absolute;
+        top: -8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 0;
+        height: 0;
+        border-left: 14px solid transparent;
+        border-right: 14px solid transparent;
+        border-bottom: 20px solid #000;
+      }
+      .controls {
+        margin-top: 16px;
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      button {
+        border: 2px solid #111;
+        border-radius: 999px;
+        padding: 10px 20px;
+        font-weight: bold;
+        cursor: pointer;
+        background: #eee;
+      }
+      .spin {
+        background: #8C1007;
+        color: #fff;
+      }
+      .result {
+        margin-top: 10px;
+        font-weight: bold;
+      }
+      .music {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        background: #fff;
+        border: 2px solid #111;
+        border-radius: 999px;
+        padding: 8px 14px;
+        cursor: pointer;
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .modal-backdrop.show {
+        display: flex;
+      }
+      .modal {
+        background: #fff;
+        border: 2px solid #111;
+        border-radius: 16px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+        overflow: hidden;
+      }
+      .modal header {
+        padding: 14px 16px;
+        border-bottom: 1px solid #eee;
+        font-weight: 800;
+        text-align: center;
+      }
+      .modal .content {
+        padding: 16px;
+        text-align: center;
+      }
+      .modal .content img {
+        width: 50%;
+        height: auto;
+        border-radius: 12px;
+        border: 2px solid #111;
+        margin-bottom: 12px;
+      }
+      .modal .content .title {
+        font-size: 1.2rem;
+        font-weight: 800;
+        margin: 8px 0 4px;
+      }
+      .modal .content .desc {
+        color: #444;
+      }
+      .modal footer {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-top: 1px solid #eee;
+      }
+      .btn {
+        border: 2px solid #111;
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .btn.primary {
+        background: #8C1007;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="board">
+        <div class="pointer"></div>
+        <canvas id="wheel"></canvas>
+      </div>
+      <div class="controls">
+        <button id="spinBtn" class="spin">SPIN</button>
+        <button id="againBtn">Coba Lagi</button>
+      </div>
+      <div id="result" class="result"></div>
+    </div>
+
+    <audio id="bgm" src="assets/music/sunflower.mp3" autoplay loop></audio>
+    <button id="musicBtn" class="music">⏸</button>
+
+    <div
+      id="winnerModal"
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalTitle"
+      aria-describedby="modalDesc"
+    >
+      <div class="modal">
+        <header> Yeayyy!</header>
+        <div class="content">
+          <img id="prizeImg" alt="Gambar hadiah" />
+          <div id="modalTitle" class="title">Kita akan:</div>
+          <div id="modalDesc" class="desc"></div>
+        </div>
+        <footer>
+          <button id="closeModal" class="btn">okaay</button>
+          <button id="spinAgain" class="btn primary">
+            gamau, mau yang lain
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <script>
+      const SEGMENTS = ["Ice cream", "Alpukat kck", "Mie ayam", "Semuanya"];
+      const COLORS = ["#fbd2e9", "#cfe0ef", "#eeddaf", "#CD5656"];
+      const SPIN_DURATION_MS = 3500;
+      const MIN_TURNS = 5;
+      const PRIZE_IMG_SRC = "assets/yeay.png";
+      const HUB_IMG_SRC = "assets/pfp.jpg";
+
+      const canvas = document.getElementById("wheel");
+      const ctx = canvas.getContext("2d");
+      let currentRotation = 0,
+        isSpinning = false;
+
+      const hubImg = new Image();
+      let hubLoaded = false;
+      hubImg.onload = () => {
+        hubLoaded = true;
+        drawWheel();
+      };
+      hubImg.onerror = () => {
+        hubLoaded = false;
+        drawWheel();
+      };
+      hubImg.src = HUB_IMG_SRC;
+
+      function fitCanvas() {
+        const size = Math.min(
+          450,
+          document.querySelector(".board").clientWidth
+        );
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        canvas.style.width = size + "px";
+        canvas.style.height = size + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawWheel();
+      }
+      window.addEventListener("resize", fitCanvas);
+
+      function drawWheel() {
+        const W = canvas.width / (window.devicePixelRatio || 1);
+        const cx = W / 2,
+          cy = W / 2,
+          r = W / 2 - 6;
+        ctx.clearRect(0, 0, W, W);
+
+        const per = (2 * Math.PI) / SEGMENTS.length;
+        for (let i = 0; i < SEGMENTS.length; i++) {
+          const start = i * per - Math.PI / 2,
+            end = start + per;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, r, start, end);
+          ctx.closePath();
+          ctx.fillStyle = COLORS[i];
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#000";
+          ctx.stroke();
+
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(start + per / 2);
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#222";
+          ctx.font = `bold ${r * 0.12}px Arial`;
+          ctx.fillText(SEGMENTS[i], r * 0.6, 0);
+          ctx.restore();
+        }
+
+        const hubR = r * 0.2;
+        if (hubLoaded) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, hubR, 0, 2 * Math.PI);
+          ctx.clip();
+          ctx.drawImage(hubImg, cx - hubR, cy - hubR, hubR * 2, hubR * 2);
+          ctx.restore();
+          ctx.beginPath();
+          ctx.arc(cx, cy, hubR, 0, 2 * Math.PI);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#000";
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(cx, cy, hubR, 0, 2 * Math.PI);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      function pickIndex() {
+        return Math.floor(Math.random() * SEGMENTS.length);
+      }
+      function spin() {
+        if (isSpinning) return;
+        isSpinning = true;
+        const idx = pickIndex();
+        const per = 360 / SEGMENTS.length;
+        const target = MIN_TURNS * 360 + (360 - (idx * per + per / 2));
+        const delta = target - (currentRotation % 360);
+        const wheelEl = canvas;
+        wheelEl.style.transition = `transform ${SPIN_DURATION_MS}ms cubic-bezier(.2,.85,.15,1)`;
+        wheelEl.style.transform = `rotate(${currentRotation + delta}deg)`;
+        currentRotation += delta;
+        setTimeout(() => {
+          isSpinning = false;
+          const text = SEGMENTS[idx];
+          document.getElementById("result").textContent = "Hasil: " + text;
+          wheelEl.style.transition = "none";
+          showWinnerModal(text);
+        }, SPIN_DURATION_MS + 30);
+      }
+      document.getElementById("spinBtn").onclick = spin;
+      document.getElementById("againBtn").onclick = () => {
+        document.getElementById("result").textContent = "";
+      };
+
+      const bgm = document.getElementById("bgm");
+      const musicBtn = document.getElementById("musicBtn");
+      musicBtn.onclick = () => {
+        if (bgm.paused) {
+          bgm.play();
+          musicBtn.textContent = "⏸";
+        } else {
+          bgm.pause();
+          musicBtn.textContent = "▶";
+        }
+      };
+
+      const modal = document.getElementById("winnerModal");
+      const prizeEl = document.getElementById("prizeImg");
+      const descEl = document.getElementById("modalDesc");
+      const closeBtn = document.getElementById("closeModal");
+      const spinAgainBtn = document.getElementById("spinAgain");
+
+      function showWinnerModal(text) {
+        prizeEl.src = PRIZE_IMG_SRC;
+        descEl.textContent = `Yeay! Kita akan makan ${text} jangan lupa di ss dan kirim ke rahman hehe.`;
+        modal.classList.add("show");
+        document.body.style.overflow = "hidden";
+        closeBtn.focus();
+      }
+      function hideWinnerModal() {
+        modal.classList.remove("show");
+        document.body.style.overflow = "";
+      }
+      closeBtn.onclick = hideWinnerModal;
+      spinAgainBtn.onclick = () => {
+        hideWinnerModal();
+        spin();
+      };
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) hideWinnerModal();
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modal.classList.contains("show"))
+          hideWinnerModal();
+      });
+
+      fitCanvas();
+    </script>
+  </body>
+</html>
